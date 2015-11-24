@@ -24,6 +24,9 @@
 #if defined(USE_GETIFADDRS) || defined(ENABLE_IPV6) || defined(ENABLE_PCP)
 #include <ifaddrs.h>
 #endif
+#if defined(BCMARM)
+#include "ifaddrs.c"
+#endif
 
 int
 getifaddr(const char * ifname, char * buf, int len,
