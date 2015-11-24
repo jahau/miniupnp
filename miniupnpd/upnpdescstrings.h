@@ -11,7 +11,7 @@
 
 /* strings used in the root device xml description */
 #define ROOTDEV_FRIENDLYNAME		OS_NAME " router"
-#define ROOTDEV_MANUFACTURER		OS_NAME
+#define ROOTDEV_MANUFACTURER		"ASUSTek"
 #define ROOTDEV_MANUFACTURERURL		OS_URL
 #define ROOTDEV_MODELNAME			OS_NAME " router"
 #define ROOTDEV_MODELDESCRIPTION	OS_NAME " router"
