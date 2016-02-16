@@ -1,5 +1,5 @@
 #!/bin/sh
-# $Id: testminissdpd.sh,v 1.2 2015/09/03 18:31:25 nanard Exp $
+# $Id: $
 # (c) 2016 Thomas Bernard
 
 OS=`uname -s`
@@ -11,8 +11,16 @@ fi
 if [ -n "$1" ] ; then
 	IF=$1
 fi
+
+# trap sigint in the script so CTRL-C interrupts the running program,
+# not the script
+trap 'echo SIGINT' INT
+
 SOCKET=`mktemp -t minissdpdsocketXXXXXX`
 PID="${SOCKET}.pid"
 ./minissdpd -s $SOCKET -p $PID -i $IF  || exit 1
-./testminissdpd -s $SOCKET || exit 2
+sleep .5
+echo "minissdpd process id `cat $PID`"
+./showminissdpdnotif -s $SOCKET
+echo "showminissdpdnotif returned $?"
 kill `cat $PID`
