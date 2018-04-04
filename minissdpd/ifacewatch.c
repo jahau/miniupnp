@@ -1,7 +1,7 @@
 /* $Id: ifacewatch.c,v 1.16 2015/09/03 18:31:25 nanard Exp $ */
 /* MiniUPnP project
- * (c) 2011-2016 Thomas Bernard
- * website : http://miniupnp.free.fr/ or http://miniupnp.tuxfamily.org/
+ * (c) 2011-2018 Thomas Bernard
+ * website : http://miniupnp.free.fr/ or https://miniupnp.tuxfamily.org/
  * This software is subject to the conditions detailed
  * in the LICENCE file provided within the distribution */
 #include "config.h"
@@ -27,6 +27,7 @@
 #include <syslog.h>
 #include <inttypes.h>
 
+#include "config.h"
 #include "openssdpsocket.h"
 #include "upnputils.h"
 #include "minissdpdtypes.h"
@@ -98,6 +99,9 @@ ProcessInterfaceWatch(int s, int s_ssdp, int s_ssdp6)
 	struct rtattr *rta;
 	int ifa_len;
 
+#ifndef ENABLE_IPV6
+	(void)s_ssdp6;
+#endif
 	iov.iov_base = buffer;
 	iov.iov_len = sizeof(buffer);
 
@@ -157,7 +161,7 @@ ProcessInterfaceWatch(int s, int s_ssdp, int s_ssdp6)
 					{
 						struct ifa_cacheinfo *cache_info;
 						cache_info = RTA_DATA(rta);
-						snprintf(tmp, sizeof(tmp), "valid=%u prefered=%u",
+						snprintf(tmp, sizeof(tmp), "valid=%u preferred=%u",
 						         cache_info->ifa_valid, cache_info->ifa_prefered);
 					}
 					break;
@@ -170,13 +174,20 @@ ProcessInterfaceWatch(int s, int s_ssdp, int s_ssdp6)
 			       is_del ? "RTM_DELADDR" : "RTM_NEWADDR",
 			       address, ifa->ifa_prefixlen, ifname);
 			for(lan_addr = lan_addrs.lh_first; lan_addr != NULL; lan_addr = lan_addr->list.le_next) {
+#ifdef ENABLE_IPV6
 				if((0 == strcmp(address, lan_addr->str)) ||
 				   (0 == strcmp(ifname, lan_addr->ifname)) ||
 				   (ifa->ifa_index == lan_addr->index)) {
+#else
+				if((0 == strcmp(address, lan_addr->str)) ||
+				   (0 == strcmp(ifname, lan_addr->ifname))) {
+#endif
 					if(ifa->ifa_family == AF_INET)
 						AddDropMulticastMembership(s_ssdp, lan_addr, 0, is_del);
+#ifdef ENABLE_IPV6
 					else if(ifa->ifa_family == AF_INET6)
 						AddDropMulticastMembership(s_ssdp6, lan_addr, 1, is_del);
+#endif
 					break;
 				}
 			}
@@ -198,6 +209,9 @@ ProcessInterfaceWatch(int s, int s_ssdp, int s_ssdp6)
 	int family = AF_UNSPEC;
 	int prefixlen = 0;
 
+#ifndef ENABLE_IPV6
+	(void)s_ssdp6;
+#endif
 	address[0] = '\0';
 	ifname[0] = '\0';
 
@@ -303,13 +317,20 @@ ProcessInterfaceWatch(int s, int s_ssdp, int s_ssdp6)
 		       is_del ? "RTM_DELADDR" : "RTM_NEWADDR",
 		       address, prefixlen, ifname);
 		for(lan_addr = lan_addrs.lh_first; lan_addr != NULL; lan_addr = lan_addr->list.le_next) {
+#ifdef ENABLE_IPV6
 			if((0 == strcmp(address, lan_addr->str)) ||
 			   (0 == strcmp(ifname, lan_addr->ifname)) ||
 			   (ifam->ifam_index == lan_addr->index)) {
+#else
+			if((0 == strcmp(address, lan_addr->str)) ||
+			   (0 == strcmp(ifname, lan_addr->ifname))) {
+#endif
 				if(family == AF_INET)
 					AddDropMulticastMembership(s_ssdp, lan_addr, 0, is_del);
+#ifdef ENABLE_IPV6
 				else if(family == AF_INET6)
 					AddDropMulticastMembership(s_ssdp6, lan_addr, 1, is_del);
+#endif
 				break;
 			}
 		}

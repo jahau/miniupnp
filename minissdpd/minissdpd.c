@@ -1,8 +1,8 @@
 /* $Id: minissdpd.c,v 1.53 2016/03/01 18:06:46 nanard Exp $ */
 /* vim: tabstop=4 shiftwidth=4 noexpandtab
  * MiniUPnP project
- * (c) 2007-2016 Thomas Bernard
- * website : http://miniupnp.free.fr/ or http://miniupnp.tuxfamily.org/
+ * (c) 2007-2018 Thomas Bernard
+ * website : http://miniupnp.free.fr/ or https://miniupnp.tuxfamily.org/
  * This software is subject to the conditions detailed
  * in the LICENCE file provided within the distribution */
 
@@ -48,8 +48,11 @@
 #include "asyncsendto.h"
 
 #define SET_MAX(max, x)	if((x) > (max)) (max) = (x)
+#ifndef MIN
+#define MIN(x,y) (((x)<(y))?(x):(y))
+#endif
 
-/* current request management stucture */
+/* current request management structure */
 struct reqelem {
 	int socket;
 	int is_notify;	/* has subscribed to notifications */
@@ -453,11 +456,11 @@ sendNotifications(int notif_type, const struct device * dev, const struct servic
  * build and send response to M-SEARCH SSDP packets. */
 static void
 SendSSDPMSEARCHResponse(int s, const struct sockaddr * sockname,
-                        const char * st, const char * usn,
+                        const char * st, size_t st_len, const char * usn,
                         const char * server, const char * location)
 {
 	int l, n;
-	char buf[512];
+	char buf[1024];
 	socklen_t sockname_len;
 	/*
 	 * follow guideline from document "UPnP Device Architecture 1.0"
@@ -470,7 +473,7 @@ SendSSDPMSEARCHResponse(int s, const struct sockaddr * sockname,
 	l = snprintf(buf, sizeof(buf), "HTTP/1.1 200 OK\r\n"
 		"CACHE-CONTROL: max-age=120\r\n"
 		/*"DATE: ...\r\n"*/
-		"ST: %s\r\n"
+		"ST: %.*s\r\n"
 		"USN: %s\r\n"
 		"EXT:\r\n"
 		"SERVER: %s\r\n"
@@ -480,7 +483,7 @@ SendSSDPMSEARCHResponse(int s, const struct sockaddr * sockname,
 		"BOOTID.UPNP.ORG: %u\r\n" /* UDA v1.1 */
 		"CONFIGID.UPNP.ORG: %u\r\n" /* UDA v1.1 */
 		"\r\n",
-		st, usn,
+		(int)st_len, st, usn,
 		server, location,
 		upnp_bootid, upnp_bootid, upnp_configid);
 #ifdef ENABLE_IPV6
@@ -498,7 +501,7 @@ SendSSDPMSEARCHResponse(int s, const struct sockaddr * sockname,
 
 /* Process M-SEARCH requests */
 static void
-processMSEARCH(int s, const char * st, int st_len,
+processMSEARCH(int s, const char * st, size_t st_len,
                const struct sockaddr * addr)
 {
 	struct service * serv;
@@ -511,12 +514,12 @@ processMSEARCH(int s, const char * st, int st_len,
 #ifdef ENABLE_IPV6
 	sockaddr_to_string(addr, buf, sizeof(buf));
 	syslog(LOG_INFO, "SSDP M-SEARCH from %s ST:%.*s",
-	       buf, st_len, st);
+	       buf, (int)st_len, st);
 #else	/* ENABLE_IPV6 */
 	syslog(LOG_INFO, "SSDP M-SEARCH from %s:%d ST: %.*s",
 	       inet_ntoa(((const struct sockaddr_in *)addr)->sin_addr),
 	       ntohs(((const struct sockaddr_in *)addr)->sin_port),
-	       st_len, st);
+	       (int)st_len, st);
 #endif	/* ENABLE_IPV6 */
 	if(st_len==8 && (0==memcmp(st, "ssdp:all", 8))) {
 		/* send a response for all services */
@@ -524,7 +527,7 @@ processMSEARCH(int s, const char * st, int st_len,
 		    serv;
 		    serv = serv->entries.le_next) {
 			SendSSDPMSEARCHResponse(s, addr,
-			                        serv->st, serv->usn,
+			                        serv->st, strlen(serv->st), serv->usn,
 			                        serv->server, serv->location);
 		}
 	} else if(st_len > 5 && (0==memcmp(st, "uuid:", 5))) {
@@ -534,22 +537,44 @@ processMSEARCH(int s, const char * st, int st_len,
 		    serv = serv->entries.le_next) {
 			if(0 == strncmp(serv->usn, st, st_len)) {
 				SendSSDPMSEARCHResponse(s, addr,
-				                        serv->st, serv->usn,
+				                        serv->st, strlen(serv->st), serv->usn,
 				                        serv->server, serv->location);
 			}
 		}
 	} else {
-		/* find matching services */
+		size_t l;
+		int st_ver = 0;
+		char atoi_buffer[8];
+
 		/* remove version at the end of the ST string */
-		if(st[st_len-2]==':' && isdigit(st[st_len-1]))
-			st_len -= 2;
+		for (l = st_len; l > 0; l--) {
+			if (st[l-1] == ':') {
+				memset(atoi_buffer, 0, sizeof(atoi_buffer));
+				memcpy(atoi_buffer, st + l, MIN((sizeof(atoi_buffer) - 1), st_len - l));
+				st_ver = atoi(atoi_buffer);
+				break;
+			}
+		}
+		if (l == 0)
+			l = st_len;
 		/* answer for each matching service */
+		/* From UPnP Device Architecture v1.1 :
+		 * 1.3.2 [...] Updated versions of device and service types
+		 * are REQUIRED to be full backward compatible with
+		 * previous versions. Devices MUST respond to M-SEARCH
+		 * requests for any supported version. For example, if a
+		 * device implements “urn:schemas-upnporg:service:xyz:2”,
+		 * it MUST respond to search requests for both that type
+		 * and “urn:schemas-upnp-org:service:xyz:1”. The response
+		 * MUST specify the same version as was contained in the
+		 * search request. [...] */
 		for(serv = servicelisthead.lh_first;
 		    serv;
 		    serv = serv->entries.le_next) {
-			if(0 == strncmp(serv->st, st, st_len)) {
+			if(0 == strncmp(serv->st, st, l)) {
+				syslog(LOG_DEBUG, "Found matching service : %s %s", serv->st, serv->location);
 				SendSSDPMSEARCHResponse(s, addr,
-				                        serv->st, serv->usn,
+				                        st, st_len, serv->usn,
 				                        serv->server, serv->location);
 			}
 		}
@@ -820,22 +845,15 @@ OpenUnixSocket(const char * path)
 	return s;
 }
 
+static ssize_t processRequestSub(struct reqelem * req, const unsigned char * buf, ssize_t n);
+
 /* processRequest() :
  * process the request coming from a unix socket */
 void processRequest(struct reqelem * req)
 {
-	ssize_t n;
-	unsigned int l, m;
+	ssize_t n, r;
 	unsigned char buf[2048];
 	const unsigned char * p;
-	enum request_type type;
-	struct device * d = devlist;
-	unsigned char rbuf[RESPONSE_BUFFER_SIZE];
-	unsigned char * rp;
-	unsigned char nrep = 0;
-	time_t t;
-	struct service * newserv = NULL;
-	struct service * serv;
 
 	n = read(req->socket, buf, sizeof(buf));
 	if(n<0) {
@@ -848,6 +866,35 @@ void processRequest(struct reqelem * req)
 		syslog(LOG_INFO, "(s=%d) request connection closed", req->socket);
 		goto error;
 	}
+	p = buf;
+	while (n > 0)
+	{
+		r = processRequestSub(req, p, n);
+		if (r < 0)
+			goto error;
+		p += r;
+		n -= r;
+	}
+	return;
+error:
+	close(req->socket);
+	req->socket = -1;
+}
+
+static ssize_t processRequestSub(struct reqelem * req, const unsigned char * buf, ssize_t n)
+{
+	unsigned int l, m;
+	unsigned int baselen;	/* without the version */
+	const unsigned char * p;
+	enum request_type type;
+	struct device * d = devlist;
+	unsigned char rbuf[RESPONSE_BUFFER_SIZE];
+	unsigned char * rp;
+	unsigned char nrep = 0;
+	time_t t;
+	struct service * newserv = NULL;
+	struct service * serv;
+
 	t = time(NULL);
 	type = buf[0];
 	p = buf + 1;
@@ -874,11 +921,30 @@ void processRequest(struct reqelem * req)
 			syslog(LOG_ERR, "(s=%d) write: %m", req->socket);
 			goto error;
 		}
+		p += l;
 		break;
 	case MINISSDPD_SEARCH_TYPE:	/* request by type */
 	case MINISSDPD_SEARCH_USN:	/* request by USN (unique id) */
 	case MINISSDPD_SEARCH_ALL:	/* everything */
 		rp = rbuf+1;
+		/* From UPnP Device Architecture v1.1 :
+		 * 1.3.2 [...] Updated versions of device and service types
+		 * are REQUIRED to be full backward compatible with
+		 * previous versions. Devices MUST respond to M-SEARCH
+		 * requests for any supported version. For example, if a
+		 * device implements “urn:schemas-upnporg:service:xyz:2”,
+		 * it MUST respond to search requests for both that type
+		 * and “urn:schemas-upnp-org:service:xyz:1”. The response
+		 * MUST specify the same version as was contained in the
+		 * search request. [...] */
+		baselen = l;	/* remove the version */
+		while(baselen > 0) {
+			if(p[baselen-1] == ':')
+				break;
+			if(!(p[baselen-1] >= '0' && p[baselen-1] <= '9'))
+				break;
+			baselen--;
+		}
 		while(d && (nrep < 255)) {
 			if(d->t < t) {
 				syslog(LOG_INFO, "outdated device");
@@ -888,7 +954,7 @@ void processRequest(struct reqelem * req)
 				  + d->headers[HEADER_USN].l + 6
 				  + (rp - rbuf) >= (int)sizeof(rbuf))
 					break;
-				if( (type==MINISSDPD_SEARCH_TYPE && 0==memcmp(d->headers[HEADER_NT].p, p, l))
+				if( (type==MINISSDPD_SEARCH_TYPE && 0==memcmp(d->headers[HEADER_NT].p, p, baselen))
 				  ||(type==MINISSDPD_SEARCH_USN && 0==memcmp(d->headers[HEADER_USN].p, p, l))
 				  ||(type==MINISSDPD_SEARCH_ALL) ) {
 					/* response :
@@ -949,6 +1015,7 @@ void processRequest(struct reqelem * req)
 			syslog(LOG_ERR, "(s=%d) write: %m", req->socket);
 			goto error;
 		}
+		p += l;
 		break;
 	case MINISSDPD_SUBMIT:	/* submit service */
 		newserv = malloc(sizeof(struct service));
@@ -1026,6 +1093,7 @@ void processRequest(struct reqelem * req)
 		}
 		memcpy(newserv->location, p, l);
 		newserv->location[l] = '\0';
+		p += l;
 		/* look in service list for duplicate */
 		for(serv = servicelisthead.lh_first;
 		    serv;
@@ -1041,7 +1109,7 @@ void processRequest(struct reqelem * req)
 				serv->location = newserv->location;
 				free(newserv);
 				newserv = NULL;
-				return;
+				return (p - buf);
 			}
 		}
 		/* Inserting new service */
@@ -1056,6 +1124,7 @@ void processRequest(struct reqelem * req)
 			goto error;
 		}
 		req->is_notify = 1;
+		p += l;
 		break;
 	default:
 		syslog(LOG_WARNING, "Unknown request type %d", type);
@@ -1065,7 +1134,7 @@ void processRequest(struct reqelem * req)
 			goto error;
 		}
 	}
-	return;
+	return (p - buf);
 error:
 	if(newserv) {
 		free(newserv->st);
@@ -1075,9 +1144,7 @@ error:
 		free(newserv);
 		newserv = NULL;
 	}
-	close(req->socket);
-	req->socket = -1;
-	return;
+	return -1;
 }
 
 static volatile sig_atomic_t quitting = 0;

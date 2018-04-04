@@ -1,7 +1,7 @@
-/* $Id: upnpc.c,v 1.117 2017/05/26 15:26:55 nanard Exp $ */
+/* $Id: upnpc.c,v 1.119 2018/03/13 23:34:46 nanard Exp $ */
 /* Project : miniupnp
  * Author : Thomas Bernard
- * Copyright (c) 2005-2017 Thomas Bernard
+ * Copyright (c) 2005-2018 Thomas Bernard
  * This software is subject to the conditions detailed in the
  * LICENCE file provided in this distribution. */
 
@@ -20,6 +20,7 @@
 #include "miniwget.h"
 #include "miniupnpc.h"
 #include "upnpcommands.h"
+#include "portlistingparse.h"
 #include "upnperrors.h"
 #include "miniupnpcstrings.h"
 
@@ -594,7 +595,10 @@ int main(int argc, char ** argv)
 			if(argv[i][1] == 'u')
 				rootdescurl = argv[++i];
 			else if(argv[i][1] == 'm')
+			{
 				multicastif = argv[++i];
+				minissdpdpath = "";	/* Disable usage of minissdpd */
+			}
 			else if(argv[i][1] == 'z')
 			{
 				char junk;

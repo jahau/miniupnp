@@ -1,4 +1,4 @@
-# $Id: Makefile,v 1.25 2015/08/06 10:17:52 nanard Exp $
+# $Id: Makefile,v 1.30 2018/02/23 13:59:44 nanard Exp $
 # MiniUPnP project
 # author: Thomas Bernard
 # website: http://miniupnp.free.fr/ or http://miniupnp.tuxfamily.org/
@@ -21,19 +21,20 @@ CFLAGS += -D_GNU_SOURCE
 CC ?= gcc
 RM = rm -f
 INSTALL = install
-OS = $(shell uname -s)
+OS = $(shell $(CC) -dumpmachine)
 
-ifeq ($(OS), Linux)
+ifneq (, $(findstring linux, $(OS)))
 	LDLIBS += -lnfnetlink
 endif
-ifeq ($(DEB_BUILD_ARCH_OS), kfreebsd)
+ifeq ($(DEB_HOST_ARCH_OS), kfreebsd)
 	LDLIBS += -lfreebsd-glue
-endif
-ifeq ($(OS), SunOS)
+else
+ifneq (, $(findstring sun, $(OS)))
 	CFLAGS += -D_XOPEN_SOURCE
 	CFLAGS += -D_XOPEN_SOURCE_EXTENDED=1
 	CFLAGS += -D__EXTENSIONS__
 	LDFLAGS += -lsocket -lnsl -lresolv
+endif
 endif
 
 #EXECUTABLES = minissdpd testminissdpd listifaces
@@ -67,7 +68,7 @@ install:	minissdpd
 	$(INSTALL) minissdpd $(SBININSTALLDIR)
 	$(INSTALL) -d $(MANINSTALLDIR)/man1
 	$(INSTALL) minissdpd.1 $(MANINSTALLDIR)/man1/minissdpd.1
-ifneq ($(OS), Darwin)
+ifeq (, $(findstring darwin, $(OS)))
 	$(INSTALL) -d $(PREFIX)/etc/init.d
 	$(INSTALL) minissdpd.init.d.script $(PREFIX)/etc/init.d/minissdpd
 endif
@@ -91,6 +92,17 @@ showminissdpdnotif:	$(SHOWMINISSDPDNOTIFOBJS)
 testcodelength:	testcodelength.o
 
 listifaces:	listifaces.o upnputils.o
+
+config.h:	VERSION
+	@tmp=`grep -n MINISSDPD_VERSION $@` ; \
+	line=`echo $$tmp | cut -d: -f1` ; \
+	old_version=`echo $$tmp | cut -d\\" -f2` ; \
+	new_version=`cat VERSION` ; \
+	if [ "$$new_version" != "$$old_version" ] ; then \
+		echo "updating VERSION in $@ from $$old_version to $$new_version"; \
+		sed "$${line}s/$${old_version}/$${new_version}/" $@ > $@.temp ; \
+		mv $@.temp $@ ; \
+	fi
 
 depend:
 	makedepend -f$(MAKEFILE_LIST) -Y \
