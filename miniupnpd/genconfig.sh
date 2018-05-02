@@ -357,6 +357,7 @@ case $OS_NAME in
 #		echo "#endif" >> ${CONFIGFILE}
 		echo "#define LIB_UUID" >> ${CONFIGFILE}
 		HAVE_IP_MREQN=1
+		echo "#define LEASEFILE_USE_REMAINING_TIME 1" >> ${CONFIGFILE}
 		FW=netfilter
 		;;
 	Darwin)
