@@ -29,6 +29,7 @@ RM = rm -f
 MV = mv
 INSTALL = install
 STRIP = strip
+DOXYGEN ?= doxygen
 
 # OSNAME and FWNAME are used for building OS or FW dependent code.
 OSNAME != uname -s
@@ -95,6 +96,13 @@ CFLAGS += -m64 -mcmodel=kernel -mno-red-zone -ffreestanding
 .elif $(ARCH) == "sparc64"
 CFLAGS += -m64 -mcmodel=medlow
 .endif
+.endif
+
+ISGITREPO != git rev-parse --is-inside-work-tree
+.if $(ISGITREPO) == "true"
+GITREF != git rev-parse --short HEAD
+GITBRANCH != git rev-parse --abbrev-ref HEAD
+CFLAGS += -DMINIUPNPD_GIT_REF=\"$(GITBRANCH)-$(GITREF)\"
 .endif
 
 STDOBJS = miniupnpd.o upnphttp.o upnpdescgen.o upnpsoap.o \
@@ -224,6 +232,9 @@ depend:	config.h
     testupnppermissions.c miniupnpdctl.c testgetifaddr.c \
 	testgetroute.c testportinuse.c testasyncsendto.c \
 	testssdppktgen.c
+
+dox:	miniupnpd.doxyconf
+	$(DOXYGEN) $>
 
 miniupnpd: config.h $(ALLOBJS)
 	$(CC) $(LDFLAGS) -o $@ $(ALLOBJS) $(LIBS)

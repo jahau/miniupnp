@@ -1,11 +1,12 @@
-/* $Id: asyncsendto.c,v 1.8 2017/05/24 22:51:57 nanard Exp $ */
+/* $Id: asyncsendto.c,v 1.11 2019/09/24 11:46:01 nanard Exp $ */
 /* MiniUPnP project
  * http://miniupnp.free.fr/ or http://miniupnp.tuxfamily.org/
- * (c) 2006-2018 Thomas Bernard
+ * (c) 2006-2019 Thomas Bernard
  * This software is subject to the conditions detailed
  * in the LICENCE file provided within the distribution */
 
 #include <sys/types.h>
+#include <sys/select.h>
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <sys/queue.h>
